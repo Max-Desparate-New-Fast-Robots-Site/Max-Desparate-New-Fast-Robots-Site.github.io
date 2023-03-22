@@ -4,7 +4,7 @@ I give up on a fancy website (too many hours lost over broken js files) and desp
 # Lab 4
 In this lab, I set up the IMU sensor, enabling 9DOF sensing for the Artemis board. This enables more complex path planning and systems control.
 
-![alt text](lab4/imuconnect.jpg "Picture of the IMU connected to the Artemis board.")
+![alt text](lab4/imuconnected.jpg "Picture of the IMU connected to the Artemis board.")
 
 The example code for the IMU board runs without issue out-of-the-box. (The below GIF was recorded retroactively with the example code. The IMU has already been mounted to the robot. The outputs are read from Serial plotter.)
 
