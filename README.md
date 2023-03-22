@@ -38,3 +38,47 @@ print(s,o)
 >> 1.0259896646740851 1.0943006994729316
 '''
 
+Using a fourier transform, I derived an alpha term for low-pass filtering. 
+![alt text](lab4/pitchfft.png "Pre-filtered Pitch FFT")
+
+I decided to use 2Hz as my cutoff frequency, leading to the following calculations. 
+![alt text](lab4/alphacalc.png "Alpha calculation")
+
+This leads to a much smoother fourier transform for the filtered signal. In fact, for the low-pass filtered pitch data, only three peaks are registered by the FFT.
+![alt text](lab4/pitchlpffft.png "Post-filter Pitch FFT")
+
+Here are the pitches laid on top of one-another. The filtered pitch is clearly much smoother and robust.
+![alt text](lab4/pitchlpfcompare.png "Pre- and post-filter Pitch FFT")
+
+
+## Gyroscope
+The gyroscope data suffers from clear drift over time. This is inherent to the sensor, although I found tha higher sampling rates reduced this drift. I suspect this has to do with the dt calculation involved with iterating pitch, roll, and yaw values from gyro data. 
+
+![alt text](lab4/gyrodrift.png "Gyro pitch drift over 5 seconds")
+
+I merged the gyro data with the accelerometer data using a complimentary filter for higher accuracy and precision, with robustness to noise and rapid changes.
+
+I used a beta of 0.9 for these results.
+![alt text](lab4/gyrodrift.png "Gyro pitch drift over 5 seconds")
+
+## Sample Data and Stunts
+The limiting factor for my sampling rate was waiting on the TOF sensor data. The change I made to boost my sampling rate substantially was to not wait for TOF sensor data when it was not available, and update IMU data first. I used separate float arrays for my variables of interest with a set size of 1400, experimentally determined to be more than enough for 5 seconds of data. 
+
+My sampling rate was much faster when I spent the 5 seconds filling up my data buffers and incrementally sending the data after the recording process was complete. The downside of this setup is that the real runtime is much longer than 5 seconds. 
+
+![alt text](lab4/5secreadings.png "5 seconds of data")
+
+I cut the cord for the 850mAH battery, the smaller voltage of the two supplied batteries, to be connected to the Artemis. The larger voltage battery is more suited for the high-power demands of the motor controllers. 
+
+I did some basic stunts, with and without the Artemis onboard. 
+
+Without Artemis:
+![alt text](lab4/noart.gif "Test drive without Artemis")
+
+With Artemis:
+![alt text](lab4/art.gif "Test drive with Artemis")
+
+
+The following data is from a 5 second capture from the IMU and TOF sensor onboard the robot, run remotely. This particular scene shows me driving the robot 360 degrees in my messy room. Notice the yaw values responding appropriately. Pitch and roll appear to jitter likely due to friction interactions with the floor. Distance sensing also responds appropriately. (I have TOF sensors on either end of the robot.)
+
+![alt text](lab4/360spindata.png "Data from a 360 spin")
