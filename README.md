@@ -28,7 +28,7 @@ To get this data, I held the IMU board against the flattest surfaces I had in my
 
 The raw accelerometer data is very noisy. Additionally, at the extreme angles, data for the other axis is most inconsistent. While most of the issue of the accelerometer data is in precision, some of the accuracy is calibrated for by determining a shift and scale factor from the sampled data to fit the expected values to the expected angles. 
 
-'''python
+```python
 # Calculating conversion factors
 # Scale conversion
 s = 180 / (np.mean(pitch90) - np.mean(pitchneg90))
@@ -36,7 +36,7 @@ s = 180 / (np.mean(pitch90) - np.mean(pitchneg90))
 o = -(np.mean(pitch90) + np.mean(pitchneg90))/2
 print(s,o)
 >> 1.0259896646740851 1.0943006994729316
-'''
+```
 
 Using a fourier transform, I derived an alpha term for low-pass filtering. 
 ![alt text](lab4/pitchfft.png "Pre-filtered Pitch FFT")
@@ -59,7 +59,10 @@ The gyroscope data suffers from clear drift over time. This is inherent to the s
 I merged the gyro data with the accelerometer data using a complimentary filter for higher accuracy and precision, with robustness to noise and rapid changes.
 
 I used a beta of 0.9 for these results.
-![alt text](lab4/gyrodrift.png "Gyro pitch drift over 5 seconds")
+
+![alt text](lab4/pitchreadingcompare.png "Pitch complimentary")
+
+![alt text](lab4/rollreadingcompare.png "Roll complimentary")
 
 ## Sample Data and Stunts
 The limiting factor for my sampling rate was waiting on the TOF sensor data. The change I made to boost my sampling rate substantially was to not wait for TOF sensor data when it was not available, and update IMU data first. I used separate float arrays for my variables of interest with a set size of 1400, experimentally determined to be more than enough for 5 seconds of data. 
