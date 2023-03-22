@@ -26,5 +26,15 @@ roll_a  = atan2(myICM.accX(),myICM.accZ())*180/M_PI;
 
 To get this data, I held the IMU board against the flattest surfaces I had in my room. This brings about potential systematic errors since the flatness and perpendicularity of these surfaces are not guaranteed. This affects my two-point calibration.  
 
+The raw accelerometer data is very noisy. Additionally, at the extreme angles, data for the other axis is most inconsistent. While most of the issue of the accelerometer data is in precision, some of the accuracy is calibrated for by determining a shift and scale factor from the sampled data to fit the expected values to the expected angles. 
 
+'''python
+# Calculating conversion factors
+# Scale conversion
+s = 180 / (np.mean(pitch90) - np.mean(pitchneg90))
+# origin conversion
+o = -(np.mean(pitch90) + np.mean(pitchneg90))/2
+print(s,o)
+>> 1.0259896646740851 1.0943006994729316
+'''
 
