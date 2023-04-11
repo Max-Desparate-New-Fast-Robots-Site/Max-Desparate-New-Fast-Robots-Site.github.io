@@ -274,6 +274,238 @@ if (output < 0) {
     buff0[counter] = (int) fmin(output+bottom-split,255);
 ```
 
-(ADD GRAPHS)
+Driving in the hallway, the robot begins to turn and converge toward 180 degrees.
+
+![alt text](lab6/yawinmotion.png "The robot drives and turns around after driving forward")
+
+The PWM values that the motors experience look like this.
+
+![alt text](lab6/outputsinmotion.png "PWM values ")
+
+This output can be broken down into the trends of Kp\*P, Ki\*I, and Kd\*D.
+![alt text](lab6/P.png "P component")
+
+![alt text](lab6/I.png "I component")
+
+![alt text](lab6/D.png "D component")
+
+</details>
+
+# Lab 7
+
+<details>
+
+## Data capture
+In the Upson lab, I ran a modified version of the TOF lab code to get step response data. I drove the motors at a set speed for 1 second before letting the robot coast and letting drag slow the robot to a stop.
+
+For easier conversion of u to pwm values, I ran the step response at the maximum PWM value that would allow for straight driving.
+
+Most critically, it was important to set the robot far enough for the robot to come to a rolling stop without collision.
+
+![alt text](lab7/xdata.png "Raw distance measurements")
+
+I processed the data to derive velocity and acceleration measurements. I used symmetric moving averages just to smooth out the data. Without the smoothing, errors from the distance measurements propogate through the differentiation. With a little bit of smoothing, I am much more confident in reading the graphs for rise time.
+
+```python
+import numpy as np
+def moving_average(x, w):
+    return np.convolve(x, np.ones(w), 'same') / w
+
+xdot = moving_average(np.ediff1d(x)/np.ediff1d(times),3)
+```
+
+![alt text](lab7/xdotdata.png "Smoothed velocity")
+
+Here we can see the robot move towards the wall with nearly continuous acceleration and increasing speed. After 1 second from the start of data capture, acceleration reverses direction and a lower magnitude acceleration at a point in time that matches the inflection point in the X data.
+
+## Drag and Mass
+After this, the process of capturing the 90% rise time is relatively simple implementation of the lecture code. 
+```python
+# d ~ 1/xdot_steady
+xdot_steady = np.min(xdot)
+d = (-1/xdot_steady)
+
+xdot90 = 0.9*xdot_steady
+t_rise = (times[np.argmax(xdot < xdot90)] - times[0]) 
+
+# m = -d*t_0.9 / ln(0.1)
+m = -d*t_rise / np.log(0.1)
+
+print(d, m)
+>> 0.6709160379958043 264.7416977038248
+```
+
+## A and B matrices
+With my coefficients determined, I then calculate my A, B, and C matrices. I also discretize A and B as required. 
+```python
+# xdot = Ax + Bu
+A = np.array([[0,1],[0,-d/m]])
+B = np.array([[0],[1/m]])
+
+C = np.array([[-1,0]])
+
+#discretized, dt is sampling time
+dt = (times[-1] - times[0]) / len(times)
+Ad = np.eye(len(A)) + dt * A  
+Bd = dt * B
+
+A = Ad
+B = Bd
+```
+
+
+|  A  |         |
+|----|---------|
+| 1 | 97.32545098 |
+| 0 | 0.75335504 |
+
+|  B  |
+|----|
+| 0. | 
+| 0.36762419 |
+
+|  C  |         |
+|----|---------|
+| -1 | 0 |
+
+# Applying Kalman Filter
+Then, it is a matter of applying the kalman filter with the kalman filter function on the measured data.
+
+We use this function applied to a given motor input u and measured output state y.
+```python
+sigma_1, sigma_2, sigma_3 = dt, dt, 27.
+
+sig_u=np.array([[sigma_1**2,0],[0,sigma_2**2]]) 
+sig_z=np.array([[sigma_3**2]])
+
+sigma = np.array([[2500,0],[0,10]])
+
+
+def kf(mu,sigma, u, y):
+    mu_p = A.dot(mu) + B.dot(u)
+    sigma_p = A.dot(sigma.dot(A.transpose()))+sig_u
+    
+    sigma_m = C.dot(sigma_p.dot(C.transpose()))+sig_z
+    kkf_gain = sigma_p.dot(C.transpose().dot(np.linalg.inv(sigma_m)))
+    
+    y_m = y-C.dot(mu_p)
+    mu = mu_p+kkf_gain.dot(y_m)
+    sigma=(np.eye(2)-kkf_gain.dot(C)).dot(sigma_p)
+
+    return mu, sigma
+```
+
+I first tested the following sigmas. My position and speed standard deviation is about 9.9. I try 20 for my sigma_3 process noise. 
+
+```python
+sigma_1, sigma_2, sigma_3 = np.sqrt(dt), np.sqrt(dt), 20.
+
+
+sig_u=np.array([[sigma_1**2,0],[0,sigma_2**2]]) 
+sig_z=np.array([[sigma_3**2]])
+
+sigma = np.array([[2500,0],[0,10]])
+```
+
+I used the below code to visualize the filtered data
+```python
+kf_state = []
+x_ = -np.array([x[1],0]).transpose()
+Y = -np.stack([x[1:],xdot[0:]]).transpose()
+u = 1
+for i,y in enumerate(Y):
+    if i == np.argmin(x)-1:
+        u = 0
+    x_, sig = kf(x_, sigma, [[u]], y)
+    kf_state.append(x_)
+
+kf_state = np.stack(kf_state)
+plt.plot(kf_state[:,0,1],label="Kalman Filtered")
+plt.plot(xdot[1:], label="Raw")
+plt.legend()
+plt.show()
+```
+
+The results show the filtered data means consistently overshooting measured results, resulting in the robot appearing to be closer to the wall than it is in the measured data. If anything, with the doppler effect, appearing slightly further from the wall would be more reasonable.
+![alt text](lab7/kalman0.png "First Kalman test")
+
+To induce a somewhat tighter fit, I increase sigmas in my process values. 
+I use 97.3, 9.9, and 50 for my sigmas 1 through 3. And I use 2.5 and 243 for m
+![alt text](lab7/kalman1.png "Second Kalman test")
+
+## Onboard extrapolation and Kalman filter
+To interpolate between TOF readings on the Artemis, I use my last Kalman-filtered readings of x and xdot to linearly extrapolate into the future. This allows me to have a finer sampling rate. 
+
+I use the following function to update my globally-stored mean and sigma matrices. 
+```C
+float kf(float u, float y){
+
+  // prediction
+  Matrix<2,1> mu_p = A*x_ + B*u;
+  Matrix<2,2> sig_p = A*sig*(~A) + sig_u;
+
+  // update
+  Matrix<1,1> sig_m = C*sig_p*(~C) + sig_z;
+  Matrix<1,1> sig_m_inv = sig_m;
+  Invert(sig_m_inv);
+  Matrix<2,1> kkf_gain = sig_p*(~C*sig_m_inv);
+
+  Matrix<1,1> y_curr = {dist};
+  Matrix<1,1> y_m = y_curr - C* mu_p;
+
+  x_ = mu_p + kf_gain*y_m;
+  sigma = (Eye - kkf_gain*C)*sig_p;
+
+  return x_(0,0);
+}
+```
+
+And after capturing the initial state with the TOF sensor, I am able to begin applying the filter to incoming data. In this code, when available, I pass the TOF data through the Kalman filter and store that as my predicted state. Otherwise, every 15 milliseconds, at a much faster sampling rate, I use my best guess of my real position and speed to predict the present state. 
+
+```C
+while (counter < buffer_size) {
+    timestamp = micros();
+    if (timestamp - last_time2 > timeout) {
+        analogWrite(right_f,0);
+        analogWrite(right_r,0);
+        analogWrite(left_f,0);
+        analogWrite(left_r,0);
+        u(0) = 0;
+        if (timestamp - last_time2 > 5000000) {
+            break;
+        }
+    }
+
+    if (distanceSensor1.checkForDataReady()) {
+        distance1 = distanceSensor1.getDistance();
+        distanceSensor1.clearInterrupt();
+        distanceSensor1.stopRanging();
+        distanceSensor1.startRanging();
+
+        if (counter > 0) {
+            dt = millis() - last_time;
+            last_time += dt;
+            xdot = (distance1 - buff0[counter-1]) / dt;
+        }
+        
+        y = {distance1,xdot};
+        kf(u,-y);
+
+        times[counter] = timestamp/1000.;
+        distance1 = y(0,0);
+        buff0[counter] = distance1;
+        buff1[counter] = y(0,1);
+        counter++;
+        }
+
+        delay(15);
+        times[counter] = timestamp/1000.;
+        distance1 += 15*y(0,1);
+        buff0[counter] = distance1;
+        buff1[counter] = y(0,1);
+        counter++;
+
+}
+```
 
 </details>
