@@ -433,36 +433,30 @@ To induce a somewhat tighter fit, I increase sigmas in my process values.
 I use 97.3, 9.9, and 50 for my sigmas 1 through 3. And I use 2.5 and 243 for m
 ![alt text](lab7/kalman1.png "Second Kalman test")
 
-## Onboard extrapolation and Kalman filter
-To interpolate between TOF readings on the Artemis, I use my last Kalman-filtered readings of x and xdot to linearly extrapolate into the future. This allows me to have a finer sampling rate. 
+## Onboard extrapolation
+To interpolate between TOF readings on the Artemis, I use my last readings of x and xdot to linearly extrapolate into the future. This allows me to have a finer sampling rate. 
 
-I use the following function to update my globally-stored mean and sigma matrices. 
+After capturing the initial state with the TOF sensor, I am able to begin applying the extrapolation to incoming data. When real sensor data is not available, the Artemis falls back on, every 15 milliseconds, at a much faster sampling rate, a best guess of position and speed to predict the present state. 
+
 ```C
-float kf(float u, float y){
-
-  // prediction
-  Matrix<2,1> mu_p = A*x_ + B*u;
-  Matrix<2,2> sig_p = A*sig*(~A) + sig_u;
-
-  // update
-  Matrix<1,1> sig_m = C*sig_p*(~C) + sig_z;
-  Matrix<1,1> sig_m_inv = sig_m;
-  Invert(sig_m_inv);
-  Matrix<2,1> kkf_gain = sig_p*(~C*sig_m_inv);
-
-  Matrix<1,1> y_curr = {dist};
-  Matrix<1,1> y_m = y_curr - C* mu_p;
-
-  x_ = mu_p + kf_gain*y_m;
-  sigma = (Eye - kkf_gain*C)*sig_p;
-
-  return x_(0,0);
+while (true) {
+    if (distanceSensor1.checkForDataReady()) {
+        last_time = millis();
+        distance1 = distanceSensor1.getDistance();
+        distanceSensor1.clearInterrupt();
+        distanceSensor1.stopRanging();
+        distanceSensor1.startRanging();
+        x_(0,0) = distance1;
+        break;
+    }
+    delay(5);
 }
-```
 
-And after capturing the initial state with the TOF sensor, I am able to begin applying the filter to incoming data. In this code, when available, I pass the TOF data through the Kalman filter and store that as my predicted state. Otherwise, every 15 milliseconds, at a much faster sampling rate, I use my best guess of my real position and speed to predict the present state. 
+analogWrite(right_f,r_speed);
+analogWrite(right_r,0);
+analogWrite(left_f,l_speed);
+analogWrite(left_r,0);
 
-```C
 while (counter < buffer_size) {
     timestamp = micros();
     if (timestamp - last_time2 > timeout) {
@@ -485,11 +479,11 @@ while (counter < buffer_size) {
         if (counter > 0) {
             dt = millis() - last_time;
             last_time += dt;
-            xdot = (distance1 - buff0[counter-1]) / dt;
+            xdot = (distance1 - buff0[last_counter]) / dt;
+            last_counter = counter;
         }
         
         y = {distance1,xdot};
-        kf(u,-y);
 
         times[counter] = timestamp/1000.;
         distance1 = y(0,0);
@@ -498,14 +492,17 @@ while (counter < buffer_size) {
         counter++;
         }
 
-        delay(15);
-        times[counter] = timestamp/1000.;
-        distance1 += 15*y(0,1);
-        buff0[counter] = distance1;
-        buff1[counter] = y(0,1);
-        counter++;
+    delay(15); // Fallback interpolation
+    times[counter] = timestamp/1000.;
+    distance1 += 15*y(0,1);
+    buff0[counter] = distance1;
+    buff1[counter] = y(0,1);
+    counter++;
 
 }
 ```
+
+Here are the results of the interpolation in a sample run. The x axis shows the number of samples. The linear interpolation strategy works very well during most of the motion. However, where the magnitude of velocity is changing much faster, near the start and end of the robot's motion, the constant speed assumption breaks down. 
+![alt text](lab7/interpx.png "X data with extrapolation")
 
 </details>
