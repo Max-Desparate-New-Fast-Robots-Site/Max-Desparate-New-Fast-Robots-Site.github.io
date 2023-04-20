@@ -506,3 +506,27 @@ Here are the results of the interpolation in a sample run. The x axis shows the 
 ![alt text](lab7/interpx.png "X data with extrapolation")
 
 </details>
+
+# Lab 9
+
+<details>
+For the mapping task, I chose to repurpose my PID orientation control code to perform orientation control. I perform PID on position setpoints around a 360 degree turn. Specifically, in time windows of about a second, a running record of the set point position gets iterated up by 24 degrees, or a 15th of a full turn. The robot performs PID to try to reach that set point. After the time window is over, a measurement is taken of the distance from both time of flight sensors (mounted perpendicular to eachother) and of the current yaw reading. The yaw reading is known to be pretty inaccurate for rotations that are too fast, so I keep the kP term relatively small. 
+
+Once I resolve the bluetooth connection issues, the code runs smoothly and captures and sends data well over bluetooth. The code for the data transfer is recycled from other labs. 
+
+## Robot Spinning
+I struggled to get the robot to turn in place, even while using duct-taped wheels. In addition, the ToF sensors are also offset from the center of the robot. Finally, there is likely a discrepency between the yaw the robot measures and the actual yaw.
+
+## Plots
+When I recieve raw data from the data callback, I recieve data for yaw, distance0, and distance1. 
+![alt text](lab9/yaws.png "Raw yaw data")
+![alt text](lab9/d0s.png "Distance 0 data")
+
+I then convert this data to polar plots after yaws are converted to radians.
+![alt text](lab9/polar.png "Polar plot of ToF")
+
+## Precision and repeatability
+Running the same code twice at a given location produces data that is surprisingly similar. This data is without any additional processing. This result occurs inspite of the fact that the starting position of the robot is not carefully controlled and the fact that the robot does not turn on its own axis. 
+![alt text](lab9/polarprecision.png "Polar plot of ToF")
+
+</details>
