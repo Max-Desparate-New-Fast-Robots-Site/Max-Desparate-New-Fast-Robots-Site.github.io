@@ -659,3 +659,131 @@ From these points, it is a simple to connect adjacent points to build a numpy ar
 
 ![alt text](lab9/single_line.png "The cleaned map")
 </details>
+
+# Lab 10
+
+<details>
+Code is adapted and optimized from Aarya Pai's 2022 lab work.
+
+Here is the complete run with Bayes filter applied on a trajectory through the simulated environment.
+
+
+![alt text](lab10/run.gif "Simulator run")
+
+# Inferences and results
+The Bel index peaks at a probability of aroud 0.5, but most of the time resides below 0.2. Error is smallest around when the robot moves relatively consistently and at short distances. Large movements especially with a lot of rotation reintroduce the most error. Interestingly, the GT alpha appears to grow substantially over the course of the trajectory. This may be an error with the simulator, given that we expect angles to be constrained -180 to 180. This is room for further investigation in future labs. 
+
+
+![alt text](lab10/prediction_stats.png "Comparing predictions and ground truth")
+
+
+## compute_control
+To clean up my code for readability, I create delta_x and delta_y which is passed to the numpy arctan2 function. I use numpy functions where possible to leverage the package's computational speed advantage. I also take advantage of the array and matrix operations in calculating delta_trans. 
+```python
+def compute_control(cur_pose, prev_pose):
+    """ Given the current and previous odometry poses, this function extracts
+    the control information based on the odometry motion model.
+
+    Args:
+        cur_pose  ([Pose]): Current Pose
+        prev_pose ([Pose]): Previous Pose 
+
+    Returns:
+        [delta_rot_1]: Rotation 1  (degrees)
+        [delta_trans]: Translation (meters)
+        [delta_rot_2]: Rotation 2  (degrees)
+    """
+    delta_x = cur_pose[0] - prev_pose[0]
+    delta_y = cur_pose[1] - prev_pose[1]
+    delta_rot_1 = mapper.normalize_angle(np.rad2deg(np.arctan2(delta_y, delta_x) - prev_pose[2]))
+    delta_trans = np.sum((np.array(cur_pose[:2]) - np.array(prev_pose[:2 ]))**2)**0.5
+    delta_rot_2 = mapper.normalize_angle(cur_pose[2] - prev_pose[2] - delta_rot_1)
+
+    return delta_rot_1, delta_trans, delta_rot_2
+```
+
+## odom_motion_model
+np.product can be used to take the product across all entries in an array. I used this fact to reduce unnecessary indexing. 
+
+```python
+def odom_motion_model(cur_pose, prev_pose, u):
+    """ Odometry Motion Model
+
+    Args:
+        cur_pose  ([Pose]): Current Pose
+        prev_pose ([Pose]): Previous Pose
+        (rot1, trans, rot2) (float, float, float): A tuple with control data in the format 
+                                                   format (rot1, trans, rot2) with units (degrees, meters, degrees)
+
+
+    Returns:
+        prob [float]: Probability p(x'|x, u)
+    """  
+    u_hat = compute_control(cur_pose, prev_pose)
+    sigma = np.array((loc.odom_rot_sigma, loc.odom_trans_sigma, loc.odom_rot_sigma))
+    prob = np.product(loc.gaussian(u_hat, np.array(u), sigma))
+    
+    return prob
+```
+
+## prediction_step
+
+I experimented with matrix operations and other numpy tools to reduce the runtime of this function further. I was not successful in finding an alternative outside of the 6 for-loops that worked for my case. The main challenge is the need to apply the belief update between every combination of previous and current poses. With larger environments, this significantly reduces the performance of the Bayes filter, given that the sum connections follows the pyramid numbers formula *n(n+1)/2* or approximately O(n**2).
+
+Here, I also experimented with adding a small epsilon to the division to prevent division errors. In practice, I did not run into issues with the normalization.
+
+```python
+def prediction_step(cur_odom, prev_odom):
+    """ Prediction step of the Bayes Filter.
+    Update the probabilities in loc.bel_bar based on loc.bel from the previous time step and the odometry motion model.
+
+    Args:
+        cur_odom  ([Pose]): Current Pose
+        prev_odom ([Pose]): Previous Pose
+    """
+    
+    actual_u = compute_control(cur_odom, prev_odom)
+    loc.bel_bar = np.zeros((mapper.MAX_CELLS_X, mapper.MAX_CELLS_Y, mapper.MAX_CELLS_A))
+    for x_prev in range(mapper.MAX_CELLS_X):
+        for y_prev in range(mapper.MAX_CELLS_Y):
+            for a_prev in range(mapper.MAX_CELLS_A):
+                if loc.bel[x_prev,y_prev,a_prev] > 0.0001:
+                    for x_t in range(mapper.MAX_CELLS_X):
+                        for y_t in range(mapper.MAX_CELLS_Y):
+                            for a_t in range(mapper.MAX_CELLS_A):
+                                loc.bel_bar[x_t,y_t,a_t] += loc.bel[x_prev,y_prev,a_prev] * odom_motion_model(mapper.from_map(x_t,y_t,a_t),mapper.from_map(x_prev,y_prev,a_prev),actual_u)
+
+    loc.bel_bar /= np.sum(loc.bel_bar)#+0.00001   
+```
+
+## sensor_model and update_step
+These functions are pretty lean as-is. I could not make improvements here.
+```python
+def sensor_model(obs):
+    """ This is the equivalent of p(z|x).
+
+    Args:
+        obs ([ndarray]): A 2D array consisting of the true observations for each robot pose in the map 
+
+    Returns:
+        [ndarray]: Returns a 1D array of size N (total number of cells in the map) with the likelihoods of each cell's observations
+    """
+    return np.array([loc.gaussian(loc.obs_range_data[i], obs[i], loc.sensor_sigma) for i in range(mapper.OBS_PER_CELL)])
+
+
+
+def update_step():
+    """ Update step of the Bayes Filter.
+    Update the probabilities in loc.bel based on loc.bel_bar and the sensor model.
+    """
+    for x_t in range(mapper.MAX_CELLS_X):
+        for y_t in range(mapper.MAX_CELLS_Y):
+            for a_t in range(mapper.MAX_CELLS_A):
+                loc.bel[x_t,y_t,a_t] = loc.bel_bar[x_t, y_t, a_t] * np.prod(sensor_model(mapper.obs_views[x_t,y_t,a_t]))
+                
+    loc.bel /= np.sum(loc.bel)
+```
+
+
+
+</details>
