@@ -670,7 +670,7 @@ Here is the complete run with Bayes filter applied on a trajectory through the s
 
 ![alt text](lab10/run.gif "Simulator run")
 
-# Inferences and results
+## Inferences and results
 The Bel index peaks at a probability of aroud 0.5, but most of the time resides below 0.2. Error is smallest around when the robot moves relatively consistently and at short distances. Large movements especially with a lot of rotation reintroduce the most error. Interestingly, the GT alpha appears to grow substantially over the course of the trajectory. This may be an error with the simulator, given that we expect angles to be constrained -180 to 180. This is room for further investigation in future labs. 
 
 
