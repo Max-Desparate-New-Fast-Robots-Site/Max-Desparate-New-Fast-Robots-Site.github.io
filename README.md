@@ -512,10 +512,53 @@ Here are the results of the interpolation in a sample run. The x axis shows the 
 <details>
 For the mapping task, I chose to repurpose my PID orientation control code to perform orientation control. I perform PID on position setpoints around a 360 degree turn. Specifically, in time windows of about a second, a running record of the set point position gets iterated up by 24 degrees, or a 15th of a full turn. The robot performs PID to try to reach that set point. After the time window is over, a measurement is taken of the distance from both time of flight sensors (mounted perpendicular to eachother) and of the current yaw reading. The yaw reading is known to be pretty inaccurate for rotations that are too fast, so I keep the kP term relatively small. 
 
+The functional Arduino code looks something like this.
+```C
+yaws[counter] = yaw_g;
+analogWrite(right_f,255);
+analogWrite(right_r,255);
+analogWrite(left_f,255);
+analogWrite(left_r,255);
+delay(50);
+
+target += 360/15;
+
+distanceSensor0.startRanging();
+while (true) {
+if (distanceSensor0.checkForDataReady()) {
+distance0 = distanceSensor0.getDistance();
+distanceSensor0.clearInterrupt();
+distanceSensor0.stopRanging();
+d0s[counter] = distance0;
+break;
+}
+delay(5);
+}
+
+distanceSensor1.startRanging();
+while (true) {
+if (distanceSensor1.checkForDataReady()) {
+distance1 = distanceSensor1.getDistance();
+distanceSensor1.clearInterrupt();
+distanceSensor1.stopRanging();
+d1s[counter] = distance1;
+break;
+}
+delay(5);
+}
+
+counter++;
+```
+
+
 Once I resolve the bluetooth connection issues, the code runs smoothly and captures and sends data well over bluetooth. The code for the data transfer is recycled from other labs. 
+
+![alt text](lab9/spin.gif "Example of robot spinning and mapping")
 
 ## Robot Spinning
 I struggled to get the robot to turn in place, even while using duct-taped wheels. In addition, the ToF sensors are also offset from the center of the robot. Finally, there is likely a discrepency between the yaw the robot measures and the actual yaw.
+
+I try to later account for these offsets in my plotting of my datapoints. This is explained in the next sections.
 
 ## Plots
 When I recieve raw data from the data callback, I recieve data for yaw, distance0, and distance1. 
@@ -527,6 +570,92 @@ I then convert this data to polar plots after yaws are converted to radians.
 
 ## Precision and repeatability
 Running the same code twice at a given location produces data that is surprisingly similar. This data is without any additional processing. This result occurs inspite of the fact that the starting position of the robot is not carefully controlled and the fact that the robot does not turn on its own axis. 
+
 ![alt text](lab9/polarprecision.png "Polar plot of ToF")
 
+## Combining maps
+From yaw and distance measurement data, we can convert polar coordinates to planar coordinates. I used the expression *x = r\*cos(theta) + x_o* and *y = r\*sin(theta) + y_o* to transform the data to a form that can be superimposed onto eachother. *x_o* and *y_o* refer to the respective origins at which the data was collected in the map. 
+
+In python, the resultant code looks like this:
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+
+keys = [["neg3neg2",-3,-2],["03",0,3],["53",5,3],["5neg3",5,-3]]
+
+for name, delx, dely in keys:
+    r = np.load(name+"r1.npy")+75
+    theta = np.load(name+"theta.npy")
+    x = (r)*np.cos(theta/180*np.pi+1*np.pi/2)/304.8+delx
+    y = (r)*np.sin(theta/180*np.pi+1*np.pi/2)/304.8+dely
+    plt.plot(x,y, ".",)
+    plt.plot([delx], [dely], "x", label =  name)
+plt.legend()
+plt.show()
+```
+Thetas are offset by 90 degrees to account for my starting position. And distances are scaled to imperial units. 
+
+![alt text](lab9/raw_map.png "Raw unprocessed map")
+
+From the unprocessed map of the raw data, we can see an overall outline of the room and dots in the vague positions of the boxes within the room. To get more out of my data, I account for the fact that my ToF sensor travels a radius away from my center of rotation. Additionally, when my robot thinks it has completed a 360 degree turn, more often the turn is closer to 340. We can scale theta to try to correct this, too.
+
+Adjusting the data to better fit, accounting for different offsets, and radii of rotation, and incomplete turns, I am able to produce a much cleaner joint point cloud.
+```python
+keys = [["neg3neg2",-3,-2, 'red'],["03",0,3, 'green'],["53",5,3,'blue'],["5neg3",5,-3,'purple']]
+for name, delx, dely, color in keys:
+    r = np.load(name+"r1.npy")
+    theta = np.load(name+"theta.npy")
+    if name == "03":
+        x = (r+25)*np.cos(theta*(165/180)/180*np.pi+np.pi/2+0.4)/304.8+delx
+        y = (r+25)*np.sin(theta*(165/180)/180*np.pi+np.pi/2+0.4)/304.8+dely+0.3
+    elif name == "53":
+        x = (r+65)*np.cos(theta*(200/180)/180*np.pi+np.pi/2-0.6)/304.8+delx
+        y = (r+65)*np.sin(theta*(200/180)/180*np.pi+np.pi/2-0.6)/304.8+dely
+    elif name == '5neg3':
+        x = (r+75)*np.cos(theta*(170/180)/180*np.pi+np.pi/2-0.)/304.8+delx
+        y = (r+75)*np.sin(theta*(170/180)/180*np.pi+np.pi/2-0.)/304.8+dely
+    else:
+        x = (r+115)*np.cos(theta*(170/180)/180*np.pi+np.pi/2-0.1)/304.8+delx
+        y = (r+115)*np.sin(theta*(170/180)/180*np.pi+np.pi/2-0.1)/304.8+dely
+    plt.plot(x,y, ".", color=color)
+    plt.plot([delx], [dely], "x", color=color, label =  name)
+plt.legend()
+plt.show()
+```
+
+![alt text](lab9/cleaned_map.png "The cleaned map")
+
+I can draw the predicted room boundaries using horizontal and vertical lines. I construct these lines under the basic assumption that all boundaries are strictly horizontal and vertical. For a vertical line, for example, I take a set of points, and draw a vertical line at *x = x_mu* where *x_mu* is the sample mean x position.
+
+```python
+p = np.stack(points, 1).reshape((2,-1))
+plt.plot(p[0],p[1],".")
+
+s = p[:,p[0,:]>6.1]
+f = np.array([[min(s[1]),np.mean(s[0])],[max(s[1]),np.mean(s[0])]]).transpose()
+#plt.plot(s[0], s[1],".")
+plt.plot(f[1], f[0])
+
+s = p[:,p[1,:]>3.5]
+f = np.array([[np.mean(s[1]),np.min(s[0])],[np.mean(s[1]),np.max(s[0])]]).transpose()
+#plt.plot(s[0], s[1],".")
+plt.plot(f[1], f[0])
+
+s = p[:,p[0,:]>-3]
+s = s[:,s[0,:]<-2]
+s = s[:,s[1,:] > 0.]
+f = np.array([[min(s[1]),np.mean(s[0])],[max(s[1]),np.mean(s[0])]]).transpose()
+#plt.plot(s[0], s[1],".")
+plt.plot(f[1], f[0])
+
+#...
+```
+
+![alt text](lab9/line_overlay.png "The cleaned map")
+
+## Prepping for simulator
+From these points, it is a simple to connect adjacent points to build a numpy array of vertices throughout the environment for later use in the simulator.
+
+
+![alt text](lab9/single_line.png "The cleaned map")
 </details>
