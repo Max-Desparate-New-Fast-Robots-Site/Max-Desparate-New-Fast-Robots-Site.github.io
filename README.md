@@ -368,7 +368,7 @@ B = Bd
 |----|---------|
 | -1 | 0 |
 
-# Applying Kalman Filter
+## Applying Kalman Filter
 Then, it is a matter of applying the kalman filter with the kalman filter function on the measured data.
 
 We use this function applied to a given motor input u and measured output state y.
@@ -434,6 +434,7 @@ I use 97.3, 9.9, and 50 for my sigmas 1 through 3. And I use 2.5 and 243 for m
 ![alt text](lab7/kalman1.png "Second Kalman test")
 
 ## Onboard extrapolation
+
 To interpolate between TOF readings on the Artemis, I use my last readings of x and xdot to linearly extrapolate into the future. This allows me to have a finer sampling rate. 
 
 After capturing the initial state with the TOF sensor, I am able to begin applying the extrapolation to incoming data. When real sensor data is not available, the Artemis falls back on, every 15 milliseconds, at a much faster sampling rate, a best guess of position and speed to predict the present state. 
@@ -507,6 +508,170 @@ Here are the results of the interpolation in a sample run. The x axis shows the 
 
 </details>
 
+# Lab 8
+
+<details>
+
+## Overview
+I chose to perform Task B: Orientation Control. For this task, I will program the robot to drive fast toward a wall, drift and turn 180 degrees and drive back. 
+
+## Best run
+![alt text](lab8/bestrun.gif "Best run")
+In my best run, my robot completes the task in about 4 seconds. 
+
+## Blooper reel
+[![alt text](https://img.youtube.com/vi/L2kpKNiJ4Ls/0.jpg)](https://www.youtube.com/watch?v=L2kpKNiJ4Ls)
+
+## Implementation
+For this high speed task, I must face a few specific challenges. I am aware that the robot's yaw measurement is inaccurate at fast rotations. It may be necessary to compensate for expected drift by programming the turn setpoint as required. 
+
+My code consists of three loops that the robot progresses through. First, the robot drives forward until it detects a forward distance less than 914 mm (3 feet). Then it initates a 180 degree turn using PID. Finally, it drives straight back to the finish line. At every stage, there exists a timeout in the case that any phase hangs for any technical reason. This helps prevent the robot from behaving too erratically and getting damaged.
+
+For faster distance updates, I use linear extrapolation to estimate distance when the ToF data is unavailable. Below is the code for phase 1.  I found that setting *distance_to_wall* to values higher than 914 mm gives the robot enough distance to respond, giving enough space for the arc of the turn. Otherwise the robot ends up crashing into the wall. 
+```python
+while (distance1 > distance_to_wall) {
+    timestamp = micros();
+    if (timestamp - last_time2 > timeout || counter >= buffer_size) {
+    analogWrite(right_f,0);
+    analogWrite(right_r,0);
+    analogWrite(left_f,0);
+    analogWrite(left_r,0);
+    if (timestamp - last_time2 > 5000000) {
+        break;
+    }
+    }
+
+    if (distanceSensor1.checkForDataReady()) {
+    distance1 = distanceSensor1.getDistance();
+    distanceSensor1.clearInterrupt();
+    distanceSensor1.stopRanging();
+    distanceSensor1.startRanging();
+
+    if (counter > 0) {
+        dt = millis() - last_time;
+        last_time += dt;
+        xdot = (distance1 - buff0[last_counter]) / dt;
+        last_counter = counter;
+    }
+    
+    times[counter] = timestamp/1000.;
+    buff0[counter] = distance1;
+    buff1[counter] = xdot;
+    counter++;
+    }
+
+    delay(15);
+    times[counter] = timestamp/1000.;
+    distance1 += 15*xdot;
+    //buff0[counter] = distance1;
+    //buff1[counter] = xdot;
+    //counter++;
+
+}
+```
+
+And here is phase 2. This code is largely unchanged from the PID lab. Having a setpoint other than 180 gave me flexibility in adjusting for yaw overshoot or undershoot. 
+```python
+last_time = micros();
+
+while (counter < buffer_size) {
+    // if data ready and past minimum update time
+    Serial.println(counter);
+    if(myICM.dataReady())
+    {
+    // collect data
+    myICM.getAGMT();
+    timestamp = micros();
+    dt = (timestamp - last_time2)/1000000.;
+    last_time2 = timestamp;
+    yaw_g += myICM.gyrZ()*dt;
+
+    yaws[counter] = yaw_g;
+
+    // calculate P error
+    P = set_point - yaw_g;
+
+    // calculate I error
+    I += P * dt;
+    I = fmax(fmin(I,I_gaurd),-I_gaurd); // anti windup
+
+    // calculate D error
+    D = (P - P_prev) / dt;
+    P_prev = P;
+
+    // calculate output, 
+    output = kp * P + ki * I + kd * D;
+    //buff0[counter] = output;
+    buff1[counter] = kp*P;
+    buff2[counter] = ki*I;
+    buff3[counter] = kd*D;
+
+    counter++;
+
+    // clamp output 
+    if (output < 0) {
+        
+        analogWrite(right_f,0);
+        analogWrite(right_r,(int) -fmax(output-bottom+split,-255));
+        analogWrite(left_f,(int) -fmax(output-bottom-split,-255));
+        analogWrite(left_r,0);
+        //buff0[counter] = (int) -fmax(output-bottom+split,-255);
+        //buff2[counter] = l_speed;
+        
+    } else {
+        analogWrite(right_f,(int) fmin(output+bottom-split,255));
+        analogWrite(right_r,0);
+        analogWrite(left_f,0);
+        analogWrite(left_r,(int) fmin(output+bottom+split,255));
+        //buff0[counter] = (int) fmin(output+bottom-split,255);
+        //buff1[counter] = r_speed;
+        //buff2[counter] = l_speed;
+    }
+
+}
+```
+
+And finally, I have a final drive forward script for phase 3. This part is the most straightforward.
+```python
+ if (timestamp - last_time > timeout) {
+    delay(5);
+    analogWrite(right_f,r_speed);
+    analogWrite(right_r,0);
+    analogWrite(left_f,l_speed);
+    analogWrite(left_r,0);
+    delay(forward);
+    analogWrite(right_f,0);
+    analogWrite(right_r,0);
+    analogWrite(left_f,0);
+    analogWrite(left_r,0);
+    break;
+    }
+```
+
+## PID and task Settings
+* Kp = 0.2
+* Ki = 0.007
+* Kd = 0.02
+* Timeout setting = 0.8 seconds
+* Setpoint = 90 degrees
+
+## Plots
+I plot data captured from my best run. When the data shows zero, that indicates that the data isn't captured for phase 1. 
+
+![alt text](lab8/yaws.png "Yaws plot")
+
+![alt text](lab8/distances.png "Distances plot")
+
+![alt text](lab8/speeds.png "Speeds plot")
+
+![alt text](lab8/kpp.png "KpP plot")
+
+![alt text](lab8/kii.png "KiI plot")
+
+![alt text](lab8/kdd.png "KdD plot")
+
+</details>
+
 # Lab 9
 
 <details>
@@ -549,7 +714,6 @@ delay(5);
 
 counter++;
 ```
-
 
 Once I resolve the bluetooth connection issues, the code runs smoothly and captures and sends data well over bluetooth. The code for the data transfer is recycled from other labs. 
 
