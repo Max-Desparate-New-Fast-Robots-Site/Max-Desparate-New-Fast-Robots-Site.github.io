@@ -184,6 +184,7 @@ case LAB5:
 To maximize the customizability of my PID stunt code, I used many input parameters sent over bluetooth. This helped me quickly test different PID parameters as well as other parameters relevant to the stunt. 
 
 My code takes up to 10 inputs. Some parameters operate as 'optional' parameters. 
+
 ```C
 success = robot_cmd.get_next_value(kp);
             if (!success)
@@ -220,6 +221,7 @@ success = robot_cmd.get_next_value(kp);
 I also used code from my IMU lab to retrieve data after recording. The most efficient way I've found to send batches of data over bluetooth is to store data to several float buffers during the run. Then, once the run is finished, send data line-by-line to a python list over bluetooth.
 
 I can use the following callback function to process and display the data.
+
 ```python
 def getData(uuid,y):
     global record
@@ -253,6 +255,7 @@ Even with my code optimized to run as fast as possible, I frequently had issues 
 
 ## Simple anti-windup
 My implementation of anti-windup is a simple hack that truncates the integral tracking variable to a set range. 
+
 ```C
 I += P * dt;
 I = fmax(fmin(I,I_gaurd),-I_gaurd); // anti windup
@@ -832,7 +835,7 @@ From these points, it is a simple to connect adjacent points to build a numpy ar
 
 </details>
 
-# Lab 10 -->
+# Lab 10 
 
 <details>
 
@@ -960,3 +963,5 @@ def update_step():
 
 
 </details>
+
+-->
