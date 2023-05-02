@@ -174,9 +174,9 @@ case LAB5:
 ```
 </details>
 
-<!-- # Lab 6
+# Lab 6
 
-<details>
+<details markdown="1">
 
 ![alt text](lab6/run.gif "The robot drives and turns around")
 
@@ -299,7 +299,7 @@ This output can be broken down into the trends of Kp\*P, Ki\*I, and Kd\*D.
 
 # Lab 7
 
-<details>
+<details markdown="1">
 
 ## Data capture
 In the Upson lab, I ran a modified version of the TOF lab code to get step response data. I drove the motors at a set speed for 1 second before letting the robot coast and letting drag slow the robot to a stop.
@@ -516,7 +516,7 @@ Here are the results of the interpolation in a sample run. The x axis shows the 
 
 # Lab 8
 
-<details>
+<details markdown="1">
 
 ## Overview
 I chose to perform Task B: Orientation Control. For this task, I will program the robot to drive fast toward a wall, drift and turn 180 degrees and drive back. 
@@ -680,7 +680,7 @@ I plot data captured from my best run. When the data shows zero, that indicates 
 
 # Lab 9
 
-<details>
+<details markdown="1">
 
 For the mapping task, I chose to repurpose my PID orientation control code to perform orientation control. I perform PID on position setpoints around a 360 degree turn. Specifically, in time windows of about a second, a running record of the set point position gets iterated up by 24 degrees, or a 15th of a full turn. The robot performs PID to try to reach that set point. After the time window is over, a measurement is taken of the distance from both time of flight sensors (mounted perpendicular to eachother) and of the current yaw reading. The yaw reading is known to be pretty inaccurate for rotations that are too fast, so I keep the kP term relatively small. 
 
@@ -837,7 +837,7 @@ From these points, it is a simple to connect adjacent points to build a numpy ar
 
 # Lab 10 
 
-<details>
+<details markdown="1">
 
 Code is adapted and optimized from Aarya Pai's 2022 lab work.
 
@@ -963,5 +963,3 @@ def update_step():
 
 
 </details>
-
--->
