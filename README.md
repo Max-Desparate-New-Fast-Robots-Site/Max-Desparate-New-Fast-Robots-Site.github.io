@@ -174,7 +174,7 @@ case LAB5:
 ```
 </details>
 
-# Lab 6
+<!-- # Lab 6
 
 <details>
 
@@ -297,7 +297,7 @@ This output can be broken down into the trends of Kp\*P, Ki\*I, and Kd\*D.
 
 </details>
 
-<!-- # Lab 7
+# Lab 7
 
 <details>
 
