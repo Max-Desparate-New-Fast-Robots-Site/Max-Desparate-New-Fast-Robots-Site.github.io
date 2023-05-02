@@ -2,6 +2,7 @@
 I give up on a fancy website (too many hours lost over broken js files) and desparately try to get a new one going. 
 
 # Lab 4
+
 <details>
 In this lab, I set up the IMU sensor, enabling 9DOF sensing for the Artemis board. This enables more complex path planning and systems control.
 
@@ -90,6 +91,7 @@ The following data is from a 5 second capture from the IMU and TOF sensor onboar
 </details>
 
 # Lab 5
+
 <details>
 
 ## Wiring Diagram
@@ -173,6 +175,7 @@ case LAB5:
 </details>
 
 # Lab 6
+
 <details>
 
 ![alt text](lab6/run.gif "The robot drives and turns around")
