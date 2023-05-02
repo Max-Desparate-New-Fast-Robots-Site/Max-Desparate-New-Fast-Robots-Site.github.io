@@ -293,7 +293,7 @@ This output can be broken down into the trends of Kp\*P, Ki\*I, and Kd\*D.
 ![alt text](lab6/D.png "D component")
 
 </details>
-
+<!-- 
 # Lab 7
 
 <details>
@@ -827,7 +827,7 @@ From these points, it is a simple to connect adjacent points to build a numpy ar
 ![alt text](lab9/single_line.png "The cleaned map")
 </details>
 
-# Lab 10
+# Lab 10 -->
 
 <details>
 Code is adapted and optimized from Aarya Pai's 2022 lab work.
