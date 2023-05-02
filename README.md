@@ -294,7 +294,7 @@ This output can be broken down into the trends of Kp\*P, Ki\*I, and Kd\*D.
 
 </details>
 
-# Lab 7
+<!-- # Lab 7
 
 <details>
 
@@ -832,7 +832,7 @@ From these points, it is a simple to connect adjacent points to build a numpy ar
 
 </details>
 
-# Lab 10
+# Lab 10 -->
 
 <details>
 
