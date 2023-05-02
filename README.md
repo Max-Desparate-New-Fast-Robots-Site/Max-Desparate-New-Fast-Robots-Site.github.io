@@ -678,9 +678,11 @@ I plot data captured from my best run. When the data shows zero, that indicates 
 # Lab 9
 
 <details>
+
 For the mapping task, I chose to repurpose my PID orientation control code to perform orientation control. I perform PID on position setpoints around a 360 degree turn. Specifically, in time windows of about a second, a running record of the set point position gets iterated up by 24 degrees, or a 15th of a full turn. The robot performs PID to try to reach that set point. After the time window is over, a measurement is taken of the distance from both time of flight sensors (mounted perpendicular to eachother) and of the current yaw reading. The yaw reading is known to be pretty inaccurate for rotations that are too fast, so I keep the kP term relatively small. 
 
 The functional Arduino code looks something like this.
+
 ```C
 yaws[counter] = yaw_g;
 analogWrite(right_f,255);
@@ -744,6 +746,7 @@ Running the same code twice at a given location produces data that is surprising
 From yaw and distance measurement data, we can convert polar coordinates to planar coordinates. I used the expression *x = r\*cos(theta) + x_o* and *y = r\*sin(theta) + y_o* to transform the data to a form that can be superimposed onto eachother. *x_o* and *y_o* refer to the respective origins at which the data was collected in the map. 
 
 In python, the resultant code looks like this:
+
 ```python
 import numpy as np
 import matplotlib.pyplot as plt
@@ -767,6 +770,7 @@ Thetas are offset by 90 degrees to account for my starting position. And distanc
 From the unprocessed map of the raw data, we can see an overall outline of the room and dots in the vague positions of the boxes within the room. To get more out of my data, I account for the fact that my ToF sensor travels a radius away from my center of rotation. Additionally, when my robot thinks it has completed a 360 degree turn, more often the turn is closer to 340. We can scale theta to try to correct this, too.
 
 Adjusting the data to better fit, accounting for different offsets, and radii of rotation, and incomplete turns, I am able to produce a much cleaner joint point cloud.
+
 ```python
 keys = [["neg3neg2",-3,-2, 'red'],["03",0,3, 'green'],["53",5,3,'blue'],["5neg3",5,-3,'purple']]
 for name, delx, dely, color in keys:
@@ -825,11 +829,13 @@ From these points, it is a simple to connect adjacent points to build a numpy ar
 
 
 ![alt text](lab9/single_line.png "The cleaned map")
+
 </details>
 
 # Lab 10
 
 <details>
+
 Code is adapted and optimized from Aarya Pai's 2022 lab work.
 
 Here is the complete run with Bayes filter applied on a trajectory through the simulated environment.
