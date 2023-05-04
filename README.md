@@ -960,6 +960,71 @@ def update_step():
     loc.bel /= np.sum(loc.bel)
 ```
 
+</details>
 
+# Lab 11
+
+<details markdown="1">
+
+## Localization in Simulation
+I tested the simulation's localization. The results appeared virtually identical to the previous lab. We can observe the belief trajectory in blue fitting fairly tightly to the ground truth in green. By testing in simulation first, we can isolate errors between code and real-world physics. From the simulated results, we have a benchmark for the error in an ideal case. 
+
+![alt text](lab11/finalplot.png "Final plot of odom, ground truth, and belief")
+
+## Real localization
+Next, we test the same code on the real robot. I implemented the *perform_observation_loop* code as follows. 
+
+```python
+async def perform_observation_loop(self, rot_vel=120):
+        """Perform the observation loop behavior on the real robot, where the robot does  
+        a 360 degree turn in place while collecting equidistant (in the angular space) sensor
+        readings, with the first sensor reading taken at the robot's current heading. 
+        The number of sensor readings depends on "observations_count"(=18) defined in world.yaml.
+        
+        Keyword arguments:
+            rot_vel -- (Optional) Angular Velocity for loop (degrees/second)
+                        Do not remove this parameter from the function definition, even if you don't use it.
+        Returns:
+            sensor_ranges   -- A column numpy array of the range values (meters)
+            sensor_bearings -- A column numpy array of the bearings at which the sensor readings were taken (degrees)
+                               The bearing values are not used in the Localization module, so you may return a empty numpy array
+        """
+        # Get ArtemisBLEController object
+        global flag
+        global record
+        flag = False
+        
+        # Run Lab 9 code for mapping
+        ble.send_command(CMD.LAB9,".07|0.005|0.02|5000000|25|40|120|1000|255|240")
+
+        # Awaiting flag to be turned on (when data is done sending)
+        while not flag:
+            await sleep()
+        
+        # Light post-processing akin to Lab 9 for angle and range correction
+        sensor_ranges = np.array(record["D1"])
+        sensor_ranges = (sensor_ranges + 75)/1000
+        sensor_ranges = np.expand_dims(sensor_ranges,1)
+        sensor_bearings = np.array(record["yaws"])
+        sensor_bearings = sensor_bearings*(170/180)/180*np.pi
+        sensor_bearings = np.expand_dims(sensor_bearings,1)
+        
+        
+        return sensor_ranges, sensor_bearings
+        
+flag = False
+```
+
+Running this code at one of the four marked poses in the environment (5 ft, -3ft, 0 deg) looks something like this. 
+
+![alt text](lab11/singlespin.gif "Single example fo the robot spinning on a coordinate")
+
+Even with this imperfect data capture trajectory, we get a predicted position very close to the actual point. 
+
+![alt text](lab11/prediction.png "Single example fo the robot spinning on a coordinate")
+
+The actual position is (-1.524m, -0.914m, 0 degrees). In other words, the belief from the update step is nearly exactly the actual position.
+
+## The Other Poses
 
 </details>
