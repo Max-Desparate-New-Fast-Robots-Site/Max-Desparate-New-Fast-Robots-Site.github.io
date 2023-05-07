@@ -1027,4 +1027,15 @@ The actual position is (-1.524m, -0.914m, 0 degrees). In other words, the belief
 
 ## The Other Poses
 
+Due to the large detection radius, the size of the prediction error ranges up to 1 foot. 
+
+### Ground truth (5, 3), belief (5,2)
+![alt text](lab11/53.png "Prediction at 5,3")
+
+### Ground truth (0, 3), belief (1,3)
+![alt text](lab11/03.png "Prediction at 0,3")
+
+### Ground truth (-3, -2), belief (-3,-2)
+![alt text](lab11/neg3neg2.png "Prediction at -3,-2")
+
 </details>
