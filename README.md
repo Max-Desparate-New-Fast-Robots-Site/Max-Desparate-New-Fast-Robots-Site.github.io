@@ -1039,3 +1039,217 @@ Due to the large detection radius, the size of the prediction error ranges up to
 ![alt text](lab11/neg3neg2.png "Prediction at -3,-2")
 
 </details>
+
+# Lab 12
+
+<details markdown="1">
+
+## Overview
+I had many challenges in tackling this lab. In this lab, the task is to autonomously navigate through a long sequence of waypoints in a predefined map. 
+
+```
+1. (-4, -3)    <--start
+2. (-2, -1)
+3. (1, -1)
+4. (2, -3)
+5. (5, -3)
+6. (5, -2)
+7. (5, 3)
+8. (0, 3)
+9. (0, 0)      <--end
+```
+
+In order to achieve this, I considered several strategies. Below, I explain the sequence of strategies I tested.
+
+
+| # | Waypoints | Distance | Yaw | Notes |
+| - | --- | --- | ---| :-- |
+|1 | Bayes filter update every step | TOF with interpolation | PID yaw position control | |
+|2 | Bayes filter at selected points | TOF with interpolation | PID yaw position control | |
+|3 | Dead reckoning | TOF with PID position control | PID yaw position control 
+
+
+## Method 1
+
+[![alt text](https://img.youtube.com/vi/hNxk1YXVzCo/0.jpg)](https://www.youtube.com/watch?v=hNxk1YXVzCo)
+
+I reused lab 7 code for TOF with interpolation. I adapted my PID lab code for the yaw control. These two steps were the more straightforward. I removed the data capture part of these functions and rebundled them as the DRIVE and TURN case. They would allow me to command the robot to drive x distance or turn y degrees, with other parameters to control the motion.
+
+The DRIVE function works by:
+
+1. Recording the initial distance ahead with TOF 
+2. Determining the distance to stop at by subtracting the initial distance by the desired movement distance.
+3. Move forward until the step 2 distance is reached. 
+
+For the Bayes filter update, I used asyncio to allow for the python kernel to wait until the bearings and ranges are populated before proceeding. 
+
+```python
+async def perform_observation_loop(self, rot_vel=120):
+
+    global flag
+    global record
+    global r_offset
+    flag = False
+    
+    print("send")
+    record = {"yaws":[],"D1":[]}
+    ble.send_command(CMD.LAB9,"2.|0.7|0.8|5000000|-30|100|150|1000|255|255")
+    
+    last = time()
+    while time() < last + 40:
+        if len(record["D1"]) == 15:
+            print("type 2 break")
+            break
+        await sleep()
+    if time() > last + 40:
+        print("timed out")
+    
+    sensor_ranges = np.array(record["D1"])
+    sensor_ranges = (sensor_ranges + r_offset)/1000
+    sensor_ranges = np.expand_dims(sensor_ranges,1)
+    sensor_bearings = np.array(record["yaws"])
+    sensor_bearings = (sensor_bearings + 20)*(170/180)/180*np.pi
+    sensor_bearings = np.expand_dims(sensor_bearings,1)
+    
+    return sensor_ranges, sensor_bearings
+```
+
+The script includes preliminary processing of the raw data to improve localization accuracy.
+
+To navigate between waypoints, these wrapper and helper functions are used. 
+
+```python
+waypoints = [(-4, -3),   
+            (-2, -1),
+             (1, -1),
+             (2, -3),
+             (5, -3),
+             (5, -2),
+             (5, 3),
+             (0, 3),
+             (0, 0)]
+
+def getAngle(arr):
+    angle = np.rad2deg(np.arctan2(arr[1],arr[0]))
+    if angle > 180:
+        angle = -360 + angle
+    return angle
+    
+def getDistance(arr):
+    return np.linalg.norm(arr)*1000
+
+async def turn(d_angle):
+    global flag
+    
+    angle_left = d_angle
+    large_angle_threshold = 90
+
+    if abs(angle_left) > large_angle_threshold:
+        angle_left = angle_left - np.sign(angle_left) * large_angle_threshold
+        flag = False
+        #                           P   I    D   timeout s Igaurd bottom target
+        ble.send_command(CMD.TURN,"2.|0.9|0.8|2000000|100|220|160|"+str(np.sign(angle_left)*large_angle_threshold))
+        last = time()
+        while time() < last + 10:
+            if flag:
+                break
+            await sleep()
+        
+        await turn(angle_left)
+    else:
+        flag = False
+        ble.send_command(CMD.TURN,"2.|0.9|0.8|2000000|100|220|160|"+str(angle_left))
+        last = time()
+        while time() < last + 10:
+            if flag:
+                break
+            await sleep()   
+```
+
+The turning function seperates large turns into a sequence of smaller turns to reduce errors from yaw drift. These pieces of code make it easier for me to iterate between waypoints, determining the next desire, and getting the angle and distance needed to travel. 
+
+```python
+ waypoint_m = np.array(waypoints[i+1])/3.2808399
+desire = np.subtract(waypoint_m,current_belief[:-1])
+
+print("Desire", desire)
+
+d_angle = getAngle(desire)
+d_dist = getDistance(desire)
+
+print(f"Desired angle {d_angle}, desired distance {d_dist}")
+last = time()
+while time() < last + 1:
+    await sleep()
+await turn(d_angle - curr_angle) 
+curr_angle = d_angle
+
+print("done turn with current ", curr_angle)
+
+flag = False
+print("send drive")
+ble.send_command(CMD.DRIVE,"100|115|"+str(int(d_dist))+"|5000000|0.0015|0.016|0.05|200")
+
+last = time()
+while not flag and time() < last + 10:
+    await sleep()
+```
+
+## Method 2
+My localization step captures 15 data points but does not complete a full turn. This led to me having issues with compounding issues with yaw drift. Furthermore, the Bayes filter update step error for yaw was much greater than the error for position. That is why most of my code omits use of the localized yaw angle.
+
+To increase ease of testing and reduce yaw drift, I decided to selectively choose to do localization at some waypoints. Particularly around the 3rd or 4th waypoint, my position error was greatest. Ultimately I had issues with this approach too since the TOF sensor would bug out frequently going between the localization and driving commands. It was incredibly strenous to debug this. More about this in the 'troubleshooting' section.
+
+I only successfully reached the fourth or fifth waypoint with this approach. 
+
+## Method 3
+[![alt text](https://img.youtube.com/vi/GTal47eFbI8/0.jpg)](https://www.youtube.com/watch?v=GTal47eFbI8)
+
+I observed that some groups seemed to get much more consistent results with a PID loop on translation control. The challenge of using TOF sensing for distance control is that, when yaw drifts too far or when the robot does not drive perfectly straight, it is common for other objects to come in and out of view, changing the robot's belief of its distance. 
+
+One approach to fix this may be to apply a (Kalman) filter on the distance readings. Alternatively, I noticed that choosing to occasionally drive backwards could mean TOF sensing occurs on a more consistent surface.
+
+I determine the distance and angle to move by using the euclidian distance between the present and next waypoints. I am able to tune the angle and distance to move at every step as needed.
+
+
+## Troubleshooting
+I faced notable issues with my TOF sensor. There were several instances where the sensor would abruptly stop recording distances. Without clear documentation on what the Sparkfun library functions do, any kind of debugging was done with intuition. 
+
+I began to notice that other teams were implementing, testing, and finishing the lab in much faster time with purely open-loop control. This led me to try simpler and simpler approaches. However, my robot is particularly finnicky with it's sensors, which I think inhibited my progress.
+
+I believe the following codeblock is what was causing me the most issues. In this code, I try to turn on the TOF sensor, wait until I have data, then set the distance value to the measurement. There is also a timeout script so that my robot does not get trapped in an infinite loop (which occurs frequently before this implementation). This code appears in my translation PID script. Frequently, on the second or third run of the same command, data would fail to ever 'get ready.'
+
+```C
+distanceSensor1.startRanging();
+while (true) {
+    if (distanceSensor1.checkForDataReady()) {
+    distance1 = distanceSensor1.getDistance();
+    Serial.print("Inside ");
+    Serial.println(distance1);
+    distanceSensor1.clearInterrupt();
+    distanceSensor1.stopRanging();
+    break;
+    } else if (micros() - timestamp > 25000 || micros() - last_time2 > timeout) {
+    distanceSensor1.clearInterrupt();
+    distanceSensor1.stopRanging();
+    break;
+    }
+    delay(5);
+}
+```
+
+This code is largely the same for the Sparkfun library's one-shot measurement example. But for, repeated loops of getting data, it is incredibly unreliable. 
+
+Digging more into the codebase, I found that I might have better results by starting ranging at the very beginning of my code and using clearInterrupt exclusively to reset the sensor measurement. Alternatively, I might try using startOneshotRanging instead of startRanging. 
+
+For the one-shot ranging technique, I used the following code. 
+```C
+distanceSensor1.startOneshotRanging(); 
+while (!distanceSensor1.checkForDataReady())
+{
+delay(1);
+}
+distance1 = distanceSensor1.getDistance(); 
+```
+
+</details>
