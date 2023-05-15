@@ -1062,12 +1062,12 @@ I had many challenges in tackling this lab. In this lab, the task is to autonomo
 In order to achieve this, I considered several strategies. Below, I explain the sequence of strategies I tested.
 
 
-| # | Waypoints | Distance | Yaw | Notes |
-| - | --- | --- | ---| :-- |
+| # | Waypoints | Distance | Yaw |
+| - | --- | --- | ---|
 |1 | Bayes filter update every step | TOF with interpolation | PID yaw position control | |
 |2 | Bayes filter at selected points | TOF with interpolation | PID yaw position control | |
 |3 | Dead reckoning | TOF with PID position control | PID yaw position control 
-
+| 4 | Mixed dead reckoning and Bayes filter | TOF with PID position control (one-shot style) | PID yaw position control
 
 ## Method 1
 
@@ -1251,5 +1251,154 @@ delay(1);
 }
 distance1 = distanceSensor1.getDistance(); 
 ```
+
+## UPDATE
+After I implemented the oneshot ranging code for all instances where I measure distance, my TOF sensor worked reliably and without issue. 
+
+
+## Method 4
+I noticed my yaw bearings progressively get worse with each waypoint. 
+
+I found benefits to using different PID parameters for position control depending on the desired distance to travel. The parameters that were sensible for short ranges did not apply well for longer distances. It was easier to create different PID commands for different distances than to trial-and-error a one-size-fits-all solution for all distances.
+
+To simplify the driving code, I wrote the following function.
+
+```python
+async def drive(d_dist):
+    global flag
+    flag = False
+    d_dist = int(d_dist)
+    if abs(d_dist) < 400:
+        ble.send_command(CMD.DRIVE,"100|117|"+str(d_dist)+"|5000000|0.0018|0.08|0.05|5000")
+        last = time()
+        while time() < last + 10:
+            if flag:
+                break
+            await sleep()
+    elif abs(d_dist) < 600:
+        ble.send_command(CMD.DRIVE,"100|117|"+str(d_dist)+"|5000000|0.0015|0.016|0.05|200")
+        last = time()
+        while time() < last + 10:
+            if flag:
+                break
+            await sleep()
+    elif abs(d_dist) < 1300:
+        ble.send_command(CMD.DRIVE,"100|117|"+str(d_dist)+"|5000000|0.0015|0.01|0.05|2000")
+        last = time()
+        while time() < last + 10:
+            if flag:
+                break
+            await sleep()
+    else:
+        ble.send_command(CMD.DRIVE,"100|105|"+str(d_dist)+"|5000000|0.0007|0.025|0.005|4000")
+        last = time()
+        while time() < last + 10:
+            if flag:
+                break
+            await sleep()
+```
+
+I reasoned that after the largest range movements is when localization is most valuable to correct errors in positioning. So I added back a localization at (5,3).
+
+After these changes, I was able to complete the entire run. I ran out of time for more tuning, but with more tuning, accuracy would be even better. 
+
+[![alt text](https://img.youtube.com/vi/D-quUX-ZyAc/0.jpg)](https://www.youtube.com/watch?v=D-quUX-ZyAc)
+
+The following code was the main loop used to perform my best run. You can see the combination of PID closed loop control and Bayes filter localization.
+
+```python
+
+r_offset = 35
+
+loc.init_grid_beliefs()
+
+hist_x = []
+hist_y = []
+
+curr_angle = 0
+
+waypoints = [(-4, -3), 
+            (-2, -1),
+             (1, -1),
+             (2, -3),
+             (5, -3),
+             (5, -2),
+             (5, 3),
+             (0, 3),
+             (0, 0)]
+
+
+for i, waypoint in enumerate(waypoints):
+    global flag
+    flag = False
+
+    if waypoint == (-4,-3):
+        await drive(570)
+        await turn(75)
+        await drive(-600)
+        curr_angle = -180
+    elif waypoint == (-2, -1):
+        await drive(-900)
+    elif waypoint == (1,-1):
+        await turn(110)
+        await drive(500)
+        await turn(46)
+        curr_angle = 0
+    elif waypoint == (2, -3):
+        await drive(700)
+        await turn(80)
+    elif waypoint == (5,-3):
+        await drive(300)
+    elif waypoint == (5,-2):
+        await drive(1524)
+        curr_angle = 90
+
+    current_belief = np.divide(waypoint,3.2808399)
+    current_belief = np.append(current_belief,curr_angle)
+
+    if waypoint == (5,3):
+
+        ## Localization step
+        record = {"yaws":[],"D1":[]}
+        await loc.get_observation_data()
+        loc.update_step()
+        loc.plot_update_step_data(plot_data=True)
+        argmax_bel = get_max(loc.bel)
+        current_belief = loc.mapper.from_map(*argmax_bel[0])
+        curr_angle = current_belief[-1]
+
+        ## Get desire (distance and angle to next waypoint)
+        waypoint_m = np.array(waypoints[i+1])/3.2808399
+        desire = np.subtract(waypoint_m,current_belief[:-1])
+        d_angle = getAngle(desire)
+        d_dist = getDistance(desire)
+
+        ## Execute desires
+        if abs(d_angle + 360 - current_belief[-1]) < abs(d_angle - current_belief[-1]):
+            await turn(d_angle + 360 - curr_angle)
+        else:
+            await turn(d_angle - curr_angle)
+        curr_angle = d_angle
+        await drive(d_dist)
+
+    elif waypoint == (0,3):
+        if abs(180 - curr_angle) < abs(-180 - curr_angle):
+            await turn(180 - curr_angle)
+        else:
+            await turn(-180 - curr_angle)
+        await turn(-80)
+        await drive(-900)
+
+    hist_x.append(current_belief[0])
+    hist_y.append(current_belief[1])
+    plt.plot(hist_x,hist_y,"-x")
+    plt.xlim(-5,5)
+    plt.ylim(-5,5)
+    plt.show()
+```
+
+The following plot shows the robot's belief of its position for every waypoint. Only the top-right waypoint is generated from Bayes filter. We can see that due to some errors from the Baye's prediction, the robot over-corrects and misses the second to last target. 
+[![alt text](lab12/run.png)]("Robot's percieved position")
+
 
 </details>
